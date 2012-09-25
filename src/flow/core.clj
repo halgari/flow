@@ -44,11 +44,19 @@
          IFlowNode
          (queue [this port value graph]
            (when (= port :in)
-             (swap! a second-arg value))
-           (distribute graph this :out value))
+             (swap! a second-arg value)
+             (distribute graph this :out value)))
          IDeref
          (deref [this]
            @a)))))
+
+(defn fn-wrap-node
+  [f]
+  (reify
+    IFlowNode
+    (queue [this port value graph]
+      (when (= port :in)
+        (distribute graph this :out (f value))))))
 
 
 (defn datagraph
@@ -68,9 +76,9 @@
        (reify
          IDistributor
          (distribute [this node port value]
-           (dorun
-               (for [[nd pt] (connections @g node port)]
-                 (queue nd pt value this))))
+           (future (dorun
+                    (for [[nd pt] (connections @g node port)]
+                      (queue nd pt value this)))))
          (-alter-graph! [this f args]
            (apply swap! g f args))
          (graph [this]

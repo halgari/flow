@@ -22,6 +22,8 @@
   (print x)
   x)
 
+(defn wait []
+  (Thread/sleep 500))
 
 (describe "datagraph"
           (it "can be creatable"
@@ -71,6 +73,19 @@
                 (alter-graph! d connect fv1 :out fv2 :in)
                 (should (connected? (graph d) fv1 :out fv2))
                 (inject d fv1 :in 42)
+                (wait)
                 (should (= @fv2 42)))))
+
+(describe "fn-wrap-node"
+          (it "can be created"
+               (should (fn-wrap-node inc)))
+          (it "applies fn to vals"
+              (let [f (fn-wrap-node inc)
+                    fv (flow-value)
+                    d (simple-distributor)]
+                (alter-graph! d connect f :out fv :in)
+                (inject d f :in 42)
+                (wait)
+                (should (= @fv 43)))))
 
 (run-specs)
