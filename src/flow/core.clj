@@ -36,27 +36,56 @@
 
 (defn- second-arg [a b] b)
 
+(defn- agent-queue [fn state]
+  (agent {:fn fn
+          :state state}))
+
+(defn- agent-queue-dispatch
+  [{fn :fn
+    state :state
+    :as old} & args]
+  (apply fn old args))
+
 (defn flow-value
   ([] (flow-value nil))
   ([init]
-     (let [a (atom init)]
+     (let [f (fn [old this port value graph]
+               (distribute graph this :out value)
+               (assoc old :state value))
+           a (agent-queue f init)]
        (reify
          IFlowNode
          (queue [this port value graph]
            (when (= port :in)
-             (swap! a second-arg value)
-             (distribute graph this :out value)))
+             (send a agent-queue-dispatch this port value graph)))
          IDeref
          (deref [this]
-           @a)))))
+           (:state @a))))))
+
+(defn filter-node
+  [f]
+  (let [fnc (fn [old this port value graph]
+              (when (f value)
+                (distribute graph this :out value))
+              old)
+        a (agent-queue fnc nil)]
+    (reify
+      IFlowNode
+      (queue [this port value graph]
+        (when (= port :in)
+          (send a agent-queue-dispatch this port value graph))))))
 
 (defn fn-wrap-node
   [f]
-  (reify
-    IFlowNode
-    (queue [this port value graph]
-      (when (= port :in)
-        (distribute graph this :out (f value))))))
+  (let [fnc (fn [old this port value graph]
+              (distribute graph this :out (f value))
+              old)
+        a (agent-queue fnc nil)]
+    (reify
+      IFlowNode
+      (queue [this port value graph]
+        (when (= port :in)
+          (send a agent-queue-dispatch this port value graph))))))
 
 
 (defn datagraph
@@ -76,9 +105,9 @@
        (reify
          IDistributor
          (distribute [this node port value]
-           (future (dorun
-                    (for [[nd pt] (connections @g node port)]
-                      (queue nd pt value this)))))
+           (dorun
+              (for [[nd pt] (connections @g node port)]
+                   (queue nd pt value this))))
          (-alter-graph! [this f args]
            (apply swap! g f args))
          (graph [this]

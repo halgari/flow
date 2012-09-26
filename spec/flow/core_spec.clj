@@ -23,7 +23,7 @@
   x)
 
 (defn wait []
-  (Thread/sleep 500))
+  (Thread/sleep 100))
 
 (describe "datagraph"
           (it "can be creatable"
@@ -55,6 +55,7 @@
               (let [d (mock-distributor)
                     v (flow-value)]
                 (queue v :in 42 d)
+                (wait)
                 (should (= @d [[v :out 42]])))))
 
 (describe "simple-distributor"
@@ -87,5 +88,33 @@
                 (inject d f :in 42)
                 (wait)
                 (should (= @fv 43)))))
+
+(defn inject-and-wait
+  [g nd port value]
+  (inject g nd port value)
+  (wait))
+
+
+(defn setup-filter-graph []
+  (let [f (filter-node pos?)
+        fv (flow-value)
+        d (simple-distributor)]
+    (alter-graph! d connect f :out fv :in)
+    {:graph d :f f :fv fv}))
+
+
+(describe "filter-node"
+          (it "can be created"
+              (should (filter-node pos?)))
+          (it "passes values"
+              (let [g (setup-filter-graph)]
+                (inject-and-wait (:graph g) (:f g) :in 42)
+                (should (= @(:fv g) 42))))
+          (it "filters values"
+              (let [g (setup-filter-graph)]
+                (inject-and-wait (:graph g) (:f g) :in 42)
+                (inject-and-wait (:graph g) (:f g) :in -42)
+                (should (= @(:fv g) 42)))))
+
 
 (run-specs)
